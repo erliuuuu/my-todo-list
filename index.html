@@ -1,0 +1,44 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <style>
+	body { font-family: sans-serif; background-color: #f4f4f4; display: flex; justify-content: center; padding: 50px; }
+    .container { background: white; padding: 20px; border-radius: 10px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); width: 300px; }
+	input { padding: 8px; width: 70%; border: 1px solid #ddd; border-radius: 4px; }
+	button { padding: 8px; background-color: #28a745; color: white; border: none; border-radius: 4px; cursor: pointer; }
+        ul { list-style: none; padding: 0; margin-top: 20px; }
+        li { background: #eee; margin-bottom: 5px; padding: 10px; display: flex; justify-content: space-between; border-radius: 4px; }
+    </style>
+    <title>我的清单</title>
+</head>
+<body>
+    <div class="container">
+        <h1>📝 我的待办事项</h1>
+        
+        <input type="text" id="todoInput" placeholder="今天要做点什么？">
+        <button onclick="addTask()">添加</button>
+
+        <ul id="todoList">
+            </ul>
+    </div>
+</body>
+	<script>
+    function addTask() {
+        var input = document.getElementById("todoInput");
+        var text = input.value; // 获取输入框的内容
+
+        if (text === "") {
+            alert("请输入内容！");
+            return;
+        }
+
+        var ul = document.getElementById("todoList");
+        var li = document.createElement("li"); // 创建一个新的列表项
+        
+        li.innerHTML = text + ' <button onclick="this.parentElement.remove()">删除</button>';
+        
+        ul.appendChild(li); // 把任务加到列表里
+        input.value = ""; // 清空输入框
+    }
+</script>
+</html>
