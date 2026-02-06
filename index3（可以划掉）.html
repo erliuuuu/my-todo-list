@@ -1,0 +1,86 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <title>我的清单 - 最终修复版</title>
+    <style>
+        body { font-family: sans-serif; background-color: #f4f4f4; display: flex; justify-content: center; padding: 50px; }
+        .container { background: white; padding: 20px; border-radius: 10px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); width: 300px; }
+        input { padding: 8px; width: 70%; border: 1px solid #ddd; border-radius: 4px; }
+        .add-btn { padding: 8px; background-color: #28a745; color: white; border: none; border-radius: 4px; cursor: pointer; }
+        ul { list-style: none; padding: 0; margin-top: 20px; }
+        li { background: #eee; margin-bottom: 5px; padding: 10px; display: flex; justify-content: space-between; align-items: center; border-radius: 4px; }
+        .completed { text-decoration: line-through; color: #888; opacity: 0.6; }
+        li span { cursor: pointer; flex-grow: 1; }
+        .del-btn { background-color: #dc3545; color: white; border: none; border-radius: 4px; padding: 5px 10px; cursor: pointer; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>📝 我的待办事项</h1>
+        <input type="text" id="todoInput" placeholder="今天要做点什么？">
+        <button class="add-btn" id="realAddBtn">添加任务</button>
+        <ul id="todoList"></ul>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+
+    <script>
+        // 配置信息
+        const SUPABASE_URL = 'https://pyoswqkqvhxlbgwjezia.supabase.co';
+        const SUPABASE_KEY = 'sb_publishable_20Sd5qBbpSXzRQIK0AmHNw_RuwwKUqd';
+        const supabaseClient = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+
+        // 初始化加载
+        window.onload = async () => {
+            const { data } = await supabaseClient.from('todos').select('*').order('id', { ascending: true });
+            if (data) data.forEach(item => createTaskElement(item.task, item.id, item.is_done));
+        };
+
+        // 绑定点击事件（不用 onclick，改用更稳的监听器）
+        document.getElementById('realAddBtn').addEventListener('click', async () => {
+            const input = document.getElementById("todoInput");
+            const text = input.value.trim();
+            if (!text) return alert("写点什么吧");
+
+            // 这里的解构必须正确
+            const { data, error } = await supabaseClient
+                .from('todos')
+                .insert([{ task: text, is_done: false }])
+                .select();
+
+            if (error) {
+                alert("云端报错: " + error.message);
+            } else if (data && data.length > 0) {
+                createTaskElement(text, data[0].id, false);
+                input.value = "";
+            }
+        });
+
+        // 切换完成状态
+        async function toggleDone(id, span) {
+            const isDone = !span.classList.contains('completed');
+            span.classList.toggle('completed');
+            await supabaseClient.from('todos').update({ is_done: isDone }).eq('id', id);
+        }
+
+        // 删除任务
+        async function deleteTask(id, btn) {
+            const { error } = await supabaseClient.from('todos').delete().eq('id', id);
+            if (!error) btn.parentElement.remove();
+        }
+
+        // 渲染 HTML
+        function createTaskElement(text, id, isDone) {
+            const ul = document.getElementById("todoList");
+            const li = document.createElement("li");
+            const doneClass = isDone ? 'class="completed"' : '';
+            li.innerHTML = `
+                <span ${doneClass} onclick="toggleDone('${id}', this)">${text}</span>
+                <button class="del-btn" onclick="deleteTask('${id}', this)">删除</button>
+            `;
+            ul.appendChild(li);
+        }
+    </script>
+</body>
+</html>
