@@ -1,44 +1,129 @@
 <!DOCTYPE html>
-<html>
+<html lang="zh-CN">
 <head>
+    <meta charset="UTF-8">
+    <title>我的清单 - 软删除版</title>
     <style>
-	body { font-family: sans-serif; background-color: #f4f4f4; display: flex; justify-content: center; padding: 50px; }
-    .container { background: white; padding: 20px; border-radius: 10px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); width: 300px; }
-	input { padding: 8px; width: 70%; border: 1px solid #ddd; border-radius: 4px; }
-	button { padding: 8px; background-color: #28a745; color: white; border: none; border-radius: 4px; cursor: pointer; }
+        /* 样式部分保持不变 */
+        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background-color: #f0f2f5; display: flex; justify-content: center; padding: 50px; }
+        .container { background: white; padding: 25px; border-radius: 12px; box-shadow: 0 10px 25px rgba(0,0,0,0.1); width: 350px; }
+        h1 { font-size: 24px; margin-bottom: 20px; text-align: center; }
+        .input-group { display: flex; flex-direction: column; gap: 10px; margin-bottom: 20px; }
+        input { padding: 10px; border: 1px solid #ddd; border-radius: 6px; font-size: 14px; }
+        .label-text { font-size: 12px; color: #666; margin-bottom: -5px; margin-left: 2px; }
+        .add-btn { padding: 10px; background-color: #28a745; color: white; border: none; border-radius: 6px; cursor: pointer; font-weight: bold; }
         ul { list-style: none; padding: 0; margin-top: 20px; }
-        li { background: #eee; margin-bottom: 5px; padding: 10px; display: flex; justify-content: space-between; border-radius: 4px; }
+        li { background: #fff; margin-bottom: 10px; padding: 12px; display: flex; flex-direction: column; border: 1px solid #eee; border-radius: 8px; }
+        .task-row { display: flex; justify-content: space-between; align-items: center; width: 100%; }
+        .completed { text-decoration: line-through; color: #888; opacity: 0.6; }
+        .date-info { font-size: 11px; color: #999; margin-top: 8px; display: flex; gap: 10px; }
+        .del-btn { background-color: #ff4d4f; color: white; border: none; border-radius: 4px; padding: 4px 8px; cursor: pointer; font-size: 12px; }
     </style>
-    <title>我的清单</title>
 </head>
 <body>
     <div class="container">
         <h1>📝 我的待办事项</h1>
-        
-        <input type="text" id="todoInput" placeholder="今天要做点什么？">
-        <button onclick="addTask()">添加</button>
-
-        <ul id="todoList">
-            </ul>
+        <div class="input-group">
+            <input type="text" id="todoInput" placeholder="今天要做点什么？">
+            <div class="label-text">设定截止日期 (可选):</div>
+            <input type="date" id="deadlineInput">
+            <button class="add-btn" id="realAddBtn">添加任务</button>
+        </div>
+        <ul id="todoList"></ul>
     </div>
-</body>
-	<script>
-    function addTask() {
-        var input = document.getElementById("todoInput");
-        var text = input.value; // 获取输入框的内容
 
-        if (text === "") {
-            alert("请输入内容！");
-            return;
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script>
+        const SUPABASE_URL = 'https://pyoswqkqvhxlbgwjezia.supabase.co';
+        const SUPABASE_KEY = 'sb_publishable_20Sd5qBbpSXzRQIK0AmHNw_RuwwKUqd';
+        const supabaseClient = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+
+        // --- 1. 修改初始化加载：增加过滤器 ---
+        window.onload = async () => {
+            const { data, error } = await supabaseClient
+                .from('todos')
+                .select('*')
+                .neq('is_deleted', true) // 核心：只查出没被标记删除的任务
+                .order('id', { ascending: true });
+            
+            if (data) {
+                data.forEach(item => createTaskElement(item));
+            }
+        };
+
+        document.getElementById('realAddBtn').addEventListener('click', async () => {
+            const input = document.getElementById("todoInput");
+            const deadlineInput = document.getElementById("deadlineInput");
+            const text = input.value.trim();
+            const deadline = deadlineInput.value;
+
+            if (!text) return alert("写点什么吧");
+
+            const today = new Date().toISOString().split('T')[0];
+
+            const { data, error } = await supabaseClient
+                .from('todos')
+                .insert([{ 
+                    task: text, 
+                    is_done: false,
+                    is_deleted: false, // 默认不删除
+                    start: today,       
+                    finish: deadline    
+                }])
+                .select();
+
+            if (error) {
+                alert("保存失败: " + error.message);
+            } else if (data && data.length > 0) {
+                createTaskElement(data[0]);
+                input.value = "";
+                deadlineInput.value = "";
+            }
+        });
+
+        async function toggleDone(id, span) {
+            const isDoneNow = !span.classList.contains('completed');
+            await supabaseClient.from('todos').update({ is_done: isDoneNow }).eq('id', id);
+            span.classList.toggle('completed');
         }
 
-        var ul = document.getElementById("todoList");
-        var li = document.createElement("li"); // 创建一个新的列表项
-        
-        li.innerHTML = text + ' <button onclick="this.parentElement.remove()">删除</button>';
-        
-        ul.appendChild(li); // 把任务加到列表里
-        input.value = ""; // 清空输入框
-    }
-</script>
+        // --- 2. 修改删除逻辑：改为更新 is_deleted 字段 ---
+        async function deleteTask(id, btn) {
+            if (!confirm("确定要移出列表吗？（数据将保留在后台）")) return;
+            
+            // 这里不再调用 .delete()，而是调用 .update()
+            const { error } = await supabaseClient
+                .from('todos')
+                .update({ is_deleted: true }) 
+                .eq('id', id);
+            
+            if (!error) {
+                // 页面上直接移除 DOM 元素
+                btn.closest('li').remove();
+            } else {
+                alert("操作失败: " + error.message);
+            }
+        }
+
+        function createTaskElement(todoObj) {
+            const ul = document.getElementById("todoList");
+            const li = document.createElement("li");
+            const doneClass = todoObj.is_done ? 'class="completed"' : '';
+            const startDate = todoObj.start || '未记录';
+            const finishDate = todoObj.finish || '无期限';
+
+            li.innerHTML = `
+                <div class="task-row">
+                    <span ${doneClass} onclick="toggleDone('${todoObj.id}', this)">${todoObj.task}</span>
+                    <button class="del-btn" onclick="deleteTask('${todoObj.id}', this)">删除</button>
+                </div>
+                <div class="date-info">
+                    <span>📅 始: ${startDate}</span>
+                    <span>🏁 终: ${finishDate}</span>
+                </div>
+            `;
+            ul.appendChild(li);
+        }
+    </script>
+</body>
 </html>
