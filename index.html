@@ -4,7 +4,6 @@
     <meta charset="UTF-8">
     <title>我的清单 - 软删除版</title>
     <style>
-        /* 样式部分保持不变 */
         body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background-color: #f0f2f5; display: flex; justify-content: center; padding: 50px; }
         .container { background: white; padding: 25px; border-radius: 12px; box-shadow: 0 10px 25px rgba(0,0,0,0.1); width: 350px; }
         h1 { font-size: 24px; margin-bottom: 20px; text-align: center; }
@@ -38,14 +37,15 @@
         const SUPABASE_KEY = 'sb_publishable_20Sd5qBbpSXzRQIK0AmHNw_RuwwKUqd';
         const supabaseClient = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
-        // --- 1. 修改初始化加载：增加过滤器 ---
         window.onload = async () => {
             const { data, error } = await supabaseClient
                 .from('todos')
                 .select('*')
-                .neq('is_deleted', true) // 核心：只查出没被标记删除的任务
+                .neq('is_deleted', true)
+                .order('is_done', { ascending: true })
+                .order('finish', { ascending: true, nullsFirst: false })
                 .order('id', { ascending: true });
-            
+
             if (data) {
                 data.forEach(item => createTaskElement(item));
             }
@@ -63,12 +63,12 @@
 
             const { data, error } = await supabaseClient
                 .from('todos')
-                .insert([{ 
-                    task: text, 
+                .insert([{
+                    task: text,
                     is_done: false,
-                    is_deleted: false, // 默认不删除
-                    start: today,       
-                    finish: deadline    
+                    is_deleted: false,
+                    start: today,
+                    finish: deadline
                 }])
                 .select();
 
@@ -83,34 +83,78 @@
 
         async function toggleDone(id, span) {
             const isDoneNow = !span.classList.contains('completed');
-            await supabaseClient.from('todos').update({ is_done: isDoneNow }).eq('id', id);
-            span.classList.toggle('completed');
-        }
 
-        // --- 2. 修改删除逻辑：改为更新 is_deleted 字段 ---
-        async function deleteTask(id, btn) {
-            if (!confirm("确定要移出列表吗？（数据将保留在后台）")) return;
-            
-            // 这里不再调用 .delete()，而是调用 .update()
             const { error } = await supabaseClient
                 .from('todos')
-                .update({ is_deleted: true }) 
+                .update({ is_done: isDoneNow })
                 .eq('id', id);
-            
+
+            if (error) {
+                alert("更新失败: " + error.message);
+                return;
+            }
+
+            span.classList.toggle('completed');
+
+            const li = span.closest('li');
+            li.dataset.done = isDoneNow ? "true" : "false";
+
+            const ul = document.getElementById("todoList");
+            ul.removeChild(li);
+            insertTaskElementSorted(li);
+        }
+
+        async function deleteTask(id, btn) {
+            if (!confirm("确定要移出列表吗？（数据将保留在后台）")) return;
+
+            const { error } = await supabaseClient
+                .from('todos')
+                .update({ is_deleted: true })
+                .eq('id', id);
+
             if (!error) {
-                // 页面上直接移除 DOM 元素
                 btn.closest('li').remove();
             } else {
                 alert("操作失败: " + error.message);
             }
         }
 
-        function createTaskElement(todoObj) {
+        function insertTaskElementSorted(li) {
             const ul = document.getElementById("todoList");
+            const items = Array.from(ul.children);
+
+            const newDone = li.dataset.done === "true";
+            const newFinish = li.dataset.finish || "9999-12-31";
+
+            for (const item of items) {
+                const itemDone = item.dataset.done === "true";
+                const itemFinish = item.dataset.finish || "9999-12-31";
+
+                if (newDone !== itemDone) {
+                    if (!newDone && itemDone) {
+                        ul.insertBefore(li, item);
+                        return;
+                    }
+                    continue;
+                }
+
+                if (newFinish < itemFinish) {
+                    ul.insertBefore(li, item);
+                    return;
+                }
+            }
+
+            ul.appendChild(li);
+        }
+
+        function createTaskElement(todoObj) {
             const li = document.createElement("li");
             const doneClass = todoObj.is_done ? 'class="completed"' : '';
             const startDate = todoObj.start || '未记录';
             const finishDate = todoObj.finish || '无期限';
+
+            li.dataset.done = todoObj.is_done ? "true" : "false";
+            li.dataset.finish = todoObj.finish || "";
 
             li.innerHTML = `
                 <div class="task-row">
@@ -122,7 +166,8 @@
                     <span>🏁 终: ${finishDate}</span>
                 </div>
             `;
-            ul.appendChild(li);
+
+            insertTaskElementSorted(li);
         }
     </script>
 </body>
